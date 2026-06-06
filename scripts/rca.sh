@@ -8,21 +8,26 @@ MODEL="llama3.1"
 OLLAMA_HOST="http://localhost:11434"
 
 if [ -z "$1" ]; then
-  echo "Usage: rca.sh <error_log_file or error_string>"
+  echo "Usage: rca.sh <error_log_file or \"error string\">"
   exit 1
 fi
 
-if [ -f "$1" ]; then
-  ERROR=$(cat "$1")
-else
-  ERROR="$1"
-fi
-
-PROMPT=$(sed "s|{error}|$ERROR|g" "$PROMPT_FILE")
-
 echo "=== Root Cause Analysis ==="
 echo ""
-curl -s "$OLLAMA_HOST/api/generate" \
-  -H "Content-Type: application/json" \
-  -d "{\"model\": \"$MODEL\", \"prompt\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'), \"stream\": false}" \
-  | python3 -c "import json,sys; print(json.load(sys.stdin)['response'])"
+
+python3 - <<PYEOF
+import json, urllib.request, os
+
+with open("$PROMPT_FILE") as f:
+    template = f.read()
+
+arg = "$1"
+error = open(arg).read() if os.path.isfile(arg) else arg
+prompt = template.replace("{error}", error)
+
+payload = json.dumps({"model": "$MODEL", "prompt": prompt, "stream": False}).encode()
+req = urllib.request.Request("$OLLAMA_HOST/api/generate",
+    data=payload, headers={"Content-Type": "application/json"})
+with urllib.request.urlopen(req) as resp:
+    print(json.loads(resp.read())["response"])
+PYEOF
