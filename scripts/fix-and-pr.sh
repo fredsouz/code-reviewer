@@ -15,22 +15,32 @@ fi
 
 FILE="$1"
 ISSUE="$2"
-CODE=$(cat "$FILE")
 
-if [ -z "$CODE" ]; then
-  echo "Error: could not read $FILE"
+if [ ! -f "$FILE" ]; then
+  echo "Error: file not found: $FILE"
   exit 1
 fi
-
-PROMPT=$(sed -e "s|{issue}|$ISSUE|g" -e "s|{code}|$CODE|g" "$PROMPT_FILE")
 
 echo "=== Generating fix for: $FILE ==="
 echo ""
 
-FIX=$(curl -s "$OLLAMA_HOST/api/generate" \
-  -H "Content-Type: application/json" \
-  -d "{\"model\": \"$MODEL\", \"prompt\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'), \"stream\": false}" \
-  | python3 -c "import json,sys; print(json.load(sys.stdin)['response'])")
+FIX=$(python3 - <<PYEOF
+import json, urllib.request
+
+with open("$PROMPT_FILE") as f:
+    template = f.read()
+with open("$FILE") as f:
+    code = f.read()
+
+prompt = template.replace("{issue}", """$ISSUE""").replace("{code}", code)
+
+payload = json.dumps({"model": "$MODEL", "prompt": prompt, "stream": False}).encode()
+req = urllib.request.Request("$OLLAMA_HOST/api/generate",
+    data=payload, headers={"Content-Type": "application/json"})
+with urllib.request.urlopen(req) as resp:
+    print(json.loads(resp.read())["response"])
+PYEOF
+)
 
 echo "$FIX"
 echo ""

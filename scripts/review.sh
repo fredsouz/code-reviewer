@@ -8,7 +8,7 @@ MODEL="llama3.1"
 OLLAMA_HOST="http://localhost:11434"
 
 if [ -n "$1" ]; then
-  DIFF=$(git diff "$1")
+  DIFF=$(git diff "$1" 2>/dev/null)
   if [ -z "$DIFF" ]; then
     DIFF=$(cat "$1")
   fi
@@ -24,11 +24,21 @@ if [ -z "$DIFF" ]; then
   exit 0
 fi
 
-PROMPT=$(sed "s|{diff}|$DIFF|g" "$PROMPT_FILE")
-
 echo "=== Code Review ==="
 echo ""
-curl -s "$OLLAMA_HOST/api/generate" \
-  -H "Content-Type: application/json" \
-  -d "{\"model\": \"$MODEL\", \"prompt\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'), \"stream\": false}" \
-  | python3 -c "import json,sys; print(json.load(sys.stdin)['response'])"
+
+python3 - <<PYEOF
+import json, urllib.request, sys
+
+with open("$PROMPT_FILE") as f:
+    template = f.read()
+
+diff = open("$1").read() if "$1" and __import__("os").path.isfile("$1") else """$DIFF"""
+prompt = template.replace("{diff}", diff)
+
+payload = json.dumps({"model": "$MODEL", "prompt": prompt, "stream": False}).encode()
+req = urllib.request.Request("$OLLAMA_HOST/api/generate",
+    data=payload, headers={"Content-Type": "application/json"})
+with urllib.request.urlopen(req) as resp:
+    print(json.loads(resp.read())["response"])
+PYEOF
