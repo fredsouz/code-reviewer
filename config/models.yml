@@ -1,0 +1,16 @@
+default_model: llama3.1
+ollama_host: http://localhost:11434
+
+models:
+  code_review:
+    model: llama3.1
+    temperature: 0.2
+    context_window: 8192
+  rca:
+    model: llama3.1
+    temperature: 0.1
+    context_window: 8192
+  fix:
+    model: llama3.1
+    temperature: 0.3
+    context_window: 8192
